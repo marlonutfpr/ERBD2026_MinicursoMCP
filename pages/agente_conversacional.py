@@ -118,69 +118,29 @@ def _render_trace(trace: list):
             _render_tool_payload(step["conteudo"])
 
 
-def _build_reasoning_sections(trace: list) -> dict:
-    secoes = {
-        "objetivo": "Resolver a solicitação do usuário usando as ferramentas disponíveis no servidor MCP.",
-        "plano": [],
-        "ferramentas": [],
-        "fechamento": [],
-    }
-
-    for step in trace:
-        if step["tipo"] == "ferramentas_descobertas":
-            ferramentas = ", ".join(step.get("ferramentas", []))
-            secoes["plano"].append("Mapeou as ferramentas disponíveis no servidor MCP.")
-            if ferramentas:
-                secoes["plano"].append(f"Ferramentas encontradas: {ferramentas}.")
-        elif step["tipo"] == "chamada":
-            ferramenta = step["ferramenta"]
-            argumentos = step.get("argumentos") or {}
-            if argumentos:
-                secoes["ferramentas"].append(
-                    f"`{ferramenta}` com {json.dumps(argumentos, ensure_ascii=False)}"
-                )
-            else:
-                secoes["ferramentas"].append(f"`{ferramenta}` sem parâmetros")
-        elif step["tipo"] == "resultado":
-            secoes["fechamento"].append(f"Recebeu o retorno de `{step['ferramenta']}`.")
-        elif step["tipo"] == "resposta_final":
-            secoes["fechamento"].append("Consolidou a resposta final para apresentar ao usuário.")
-
-    if not secoes["plano"]:
-        secoes["plano"].append("Ainda não foi necessário montar um plano explícito.")
-
-    if not secoes["ferramentas"]:
-        secoes["ferramentas"].append("Nenhuma ferramenta precisou ser acionada nesta resposta.")
-
-    if not secoes["fechamento"]:
-        secoes["fechamento"].append("A resposta foi gerada sem etapas adicionais registradas.")
-
-    return secoes
-
-
 def _render_reasoning_panel(trace: list):
     if not trace:
         return
 
-    secoes = _build_reasoning_sections(trace)
-
-    st.markdown("### Raciocínio do Agente")
-    st.markdown(f"**Objetivo**: {secoes['objetivo']}")
-
-    st.markdown("**Plano de execução**")
-    for item in secoes["plano"]:
-        st.markdown(f"- {item}")
-
-    st.markdown("**Ferramentas acionadas**")
-    for item in secoes["ferramentas"]:
-        st.markdown(f"- {item}")
-
-    st.markdown("**Fechamento**")
-    for item in secoes["fechamento"]:
-        st.markdown(f"- {item}")
-
-    with st.expander("Detalhes completos do raciocínio", expanded=False):
-        _render_trace(trace)
+    with st.expander("Raciocínio do Agente", expanded=False):
+        for indice, step in enumerate(trace, start=1):
+            if step["tipo"] == "ferramentas_descobertas":
+                st.markdown(f"**Passo {indice} — Ferramentas disponíveis**")
+                st.code(", ".join(step.get("ferramentas", [])), language=None)
+            elif step["tipo"] == "chamada":
+                st.markdown(f"**Passo {indice} — Chamada de ferramenta**")
+                st.markdown(f"Ferramenta: `{step['ferramenta']}`")
+                if step.get("argumentos"):
+                    st.json(step["argumentos"])
+                else:
+                    st.caption("Sem parâmetros")
+            elif step["tipo"] == "resultado":
+                st.markdown(f"**Passo {indice} — Resultado da ferramenta**")
+                st.caption(f"Retorno de `{step['ferramenta']}`")
+                _render_tool_payload(step["conteudo"])
+            elif step["tipo"] == "resposta_final":
+                st.markdown(f"**Passo {indice} — Resposta final**")
+                st.markdown(step.get("conteudo", ""))
 
 
 def _render_chart_from_trace(trace: list):
