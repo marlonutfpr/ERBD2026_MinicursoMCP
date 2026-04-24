@@ -5,7 +5,7 @@
 **Autor:** Prof. Dr. Marlon Marcon  
 **Instituição:** Universidade Tecnológica Federal do Paraná — UTFPR
 
-Apresentação do minicurso: [Minicurso ERBD 2026 - Agentes e MCP.pdf](Minicurso%20ERBD%202026%20-%20Agentes%20e%20MCP.pdf)
+Apresentação do minicurso: [minicurso_erbd_2026_mcp.pdf](minicurso_erbd_2026_mcp.pdf)
 
 ---
 
