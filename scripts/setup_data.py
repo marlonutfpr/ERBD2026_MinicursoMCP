@@ -22,10 +22,25 @@ def setup_environment():
     print("Gerando banco de produtos (SQLite)...")
     conn = sqlite3.connect(os.path.join(DATA_DIR, 'produtos.db'))
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS produtos (id INTEGER PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL)''')
+    cursor.execute("DROP TABLE IF EXISTS produtos")
+    cursor.execute(
+        '''
+        CREATE TABLE produtos (
+            id INTEGER PRIMARY KEY,
+            nome TEXT,
+            categoria TEXT,
+            fornecedor TEXT,
+            custo REAL,
+            preco REAL,
+            lucro REAL,
+            margem REAL
+        )
+        '''
+    )
     cursor.execute("DELETE FROM produtos") # Limpa execuções anteriores
     
     categorias = ['Eletrônicos', 'Informática', 'Móveis', 'Escritório', 'Acessórios']
+    fornecedores = ['Innova Supply', 'TechNova', 'Office Prime', 'Mobly Corp', 'DataBridge']
     adjetivos = ['Pro', 'Master', 'Lite', 'Gamer', 'Premium', 'Essencial']
     tipos = ['Notebook', 'Monitor', 'Teclado', 'Cadeira', 'Mesa', 'Headset', 'Mouse']
     
@@ -33,10 +48,15 @@ def setup_environment():
     for i in range(1, 1001):
         nome = f"{random.choice(tipos)} {random.choice(adjetivos)} {random.randint(100, 999)}"
         categoria = random.choice(categorias)
-        preco = round(random.uniform(50.0, 8500.0), 2)
-        produtos.append((i, nome, categoria, preco))
+        fornecedor = random.choice(fornecedores)
+        custo = round(random.uniform(30.0, 6500.0), 2)
+        markup = random.uniform(1.08, 1.65)
+        preco = round(custo * markup, 2)
+        lucro = round(preco - custo, 2)
+        margem = round((lucro / preco) * 100, 2) if preco else 0.0
+        produtos.append((i, nome, categoria, fornecedor, custo, preco, lucro, margem))
         
-    cursor.executemany("INSERT INTO produtos VALUES (?, ?, ?, ?)", produtos)
+    cursor.executemany("INSERT INTO produtos VALUES (?, ?, ?, ?, ?, ?, ?, ?)", produtos)
     conn.commit()
     conn.close()
     print(f"✅ {len(produtos)} produtos inseridos no SQLite.")

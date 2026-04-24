@@ -18,24 +18,39 @@ DATA_DIR = os.path.join(_BASE, 'data')
 # =====================================================================
 
 @mcp.tool()
-def obter_metricas_produtos(dimensao: str) -> str:
+def obter_metricas_produtos(dimensao: str, nivel_acesso: str = "agente") -> str:
     """
     Obtém o preço médio dos produtos agrupados por uma dimensão de negócio.
-    Parâmetros aceites para 'dimensao': 'categoria'.
+    Parâmetros aceites para 'dimensao': 'categoria', 'custo', 'margem', 'fornecedor', 'lucro'.
+    Parâmetros aceites para 'nivel_acesso': 'agente', 'analista', 'diretoria'.
     
-    Tentar aceder a dimensões financeiras restritas resultará num bloqueio.
+    Dimensões financeiras restritas exigem nível de acesso 'diretoria'.
     """
     dimensao = dimensao.lower().strip()
+    nivel_acesso = nivel_acesso.lower().strip()
+
+    niveis_validos = {"agente", "analista", "diretoria"}
+    if nivel_acesso not in niveis_validos:
+        return (
+            f"⚠️ Nível de acesso inválido: '{nivel_acesso}'. "
+            f"Use um de: {', '.join(sorted(niveis_validos))}."
+        )
     
     # 🛡️ EXEMPLO DE BLOQUEIO 1: Governança Corporativa e RBAC (Role-Based Access Control)
     # Bloqueamos o acesso da IA a colunas/dados estratégicos que não lhe competem.
     dimensoes_proibidas = ['custo', 'margem', 'fornecedor', 'lucro']
-    if dimensao in dimensoes_proibidas:
-        return f"❌ BLOQUEIO DE GOVERNANÇA: O acesso à dimensão '{dimensao}' é estritamente reservado à diretoria (C-Level). O perfil deste Agente não possui autorização."
+    if dimensao in dimensoes_proibidas and nivel_acesso != "diretoria":
+        return (
+            f"❌ BLOQUEIO DE GOVERNANÇA: O acesso à dimensão '{dimensao}' é estritamente reservado "
+            f"à diretoria (C-Level). O nível de acesso atual é '{nivel_acesso}'."
+        )
     
     # Validação rigorosa de parâmetros (evita SQL Injection, pois não concatenamos input cego)
-    if dimensao != 'categoria':
+    dimensoes_suportadas = {'categoria', 'custo', 'margem', 'fornecedor', 'lucro'}
+    if dimensao not in dimensoes_suportadas:
         return f"⚠️ Erro: A dimensão '{dimensao}' não é suportada por esta ferramenta."
+
+    dimensoes_disponiveis_no_dataset = {'categoria', 'custo', 'margem', 'fornecedor', 'lucro'}
 
     # A LÓGICA DE DADOS FICA NO SERVIDOR:
     # A IA não sabe se isto é SQLite, Postgres ou Oracle. Ela apenas pede a métrica.
@@ -49,7 +64,10 @@ def obter_metricas_produtos(dimensao: str) -> str:
         colunas = [description[0] for description in cursor.description]
         conn.close()
         
-        return json.dumps({"colunas": colunas, "dados": resultados}, ensure_ascii=False)
+        return json.dumps(
+            {"colunas": colunas, "dados": resultados, "nivel_acesso": nivel_acesso},
+            ensure_ascii=False,
+        )
     except Exception as e:
         return f"Erro interno do banco de dados: {str(e)}"
 

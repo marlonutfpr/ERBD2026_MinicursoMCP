@@ -6,10 +6,13 @@ import json
 import pandas as pd
 import re
 from datetime import date, timedelta
+from dotenv import load_dotenv
 
 # Adiciona mcp/ ao path para importar mcp_core
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mcp'))
-from mcp_core import mcp_call_tool_async, mcp_multi_call_async
+from mcp_core import mcp_call_tool_async, mcp_multi_call_async, agente_llm_loop
+
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
 
 # Configuração inicial da página Streamlit
 st.set_page_config(
@@ -351,6 +354,41 @@ def exibir_resultado(resultado_texto: str):
     except json.JSONDecodeError:
         st.info(resultado_texto)
 
+
+def _render_conversation_trace(trace: list):
+    with st.expander("Raciocínio do Agente", expanded=False):
+        for indice, step in enumerate(trace, start=1):
+            if step["tipo"] == "ferramentas_descobertas":
+                st.markdown(f"**Passo {indice} — Ferramentas disponíveis**")
+                st.code(", ".join(step.get("ferramentas", [])), language=None)
+            elif step["tipo"] == "chamada":
+                st.markdown(f"**Passo {indice} — Chamada de ferramenta**")
+                st.markdown(f"Ferramenta: `{step['ferramenta']}`")
+                if step.get("argumentos"):
+                    st.json(step["argumentos"])
+                else:
+                    st.caption("Sem parâmetros")
+            elif step["tipo"] == "resultado":
+                st.markdown(f"**Passo {indice} — Resultado da ferramenta**")
+                st.caption(f"Retorno de `{step['ferramenta']}`")
+                exibir_resultado(step["conteudo"])
+            elif step["tipo"] == "resposta_final":
+                st.markdown(f"**Passo {indice} — Resposta final**")
+                st.markdown(step.get("conteudo", ""))
+
+
+def _render_chart_from_conversation_trace(trace: list):
+    for step in reversed(trace):
+        if step.get("tipo") != "resultado":
+            continue
+        try:
+            dados = json.loads(step["conteudo"])
+        except Exception:
+            continue
+        if isinstance(dados, dict) and dados.get("tipo") == "grafico" and dados.get("dados"):
+            exibir_resultado(step["conteudo"])
+            break
+
 # -----------------------------------------------------------------------------
 # INTERFACE GRÁFICA (UI)
 # -----------------------------------------------------------------------------
@@ -366,7 +404,7 @@ aba1, aba2, aba3, aba4, aba5 = st.tabs([
     "🗂️ NoSQL (Documentos)",
     "📈 CSV (Big Data)",
     "🌐 API Externa",
-    "💬 Linguagem Natural",
+    "🤖 Agente Conversacional",
 ])
 
 # --- ABA 1: SQLITE ---
@@ -377,17 +415,28 @@ with aba1:
     
     col1, col2 = st.columns([1, 2])
     with col1:
+        nivel_acesso_sql = st.selectbox(
+            "Nível de acesso SQL:",
+            options=["agente", "analista", "diretoria"],
+            help="Dimensões estratégicas como margem, lucro, custo e fornecedor exigem acesso de diretoria, mas não estão materializadas neste dataset de laboratório.",
+        )
         dimensao_sql = st.selectbox(
             "Dimensão para agrupar preço médio:", 
             options=["categoria", "margem", "lucro", "fornecedor"],
-            help="Note que margem, lucro e fornecedor estão bloqueados por governança."
+            help="Margem, lucro e fornecedor dependem do nível de acesso escolhido acima."
         )
         if st.button("Executar Query SQL", key="btn_sql"):
-            resultado = executar_ferramenta("obter_metricas_produtos", {"dimensao": dimensao_sql})
+            resultado = executar_ferramenta(
+                "obter_metricas_produtos",
+                {"dimensao": dimensao_sql, "nivel_acesso": nivel_acesso_sql},
+            )
             with col2:
                 exibir_resultado(resultado)
         if st.button("Gerar gráfico das métricas", key="btn_sql_chart"):
-            resultado = executar_ferramenta("obter_metricas_produtos", {"dimensao": dimensao_sql})
+            resultado = executar_ferramenta(
+                "obter_metricas_produtos",
+                {"dimensao": dimensao_sql, "nivel_acesso": nivel_acesso_sql},
+            )
             with col2:
                 if "❌" in resultado or "⚠️" in resultado:
                     exibir_resultado(resultado)
@@ -448,175 +497,124 @@ with aba4:
         resultado = executar_ferramenta("consultar_cotacao_moedas", {})
         exibir_resultado(resultado)
 
-# --- ABA 5: LINGUAGEM NATURAL ---
+# --- ABA 5: AGENTE CONVERSACIONAL ---
 with aba5:
-    st.header("💬 Acesso via Linguagem Natural")
+    st.header("🤖 Agente Conversacional")
     st.markdown("""
-    Digite uma pergunta em **linguagem natural** e o sistema identificará automaticamente  
-    qual ferramenta MCP invocar, com quais parâmetros — simulando o que um LLM faria.
+    O **LLM é o único orquestrador**: ele descobre as ferramentas MCP, decide quais invocar,
+    interpreta os resultados e consolida a resposta final.
     """)
 
-    # Exemplos clicáveis
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    modelos_chat = [
+        "openai/gpt-4o-mini",
+        "deepseek/deepseek-v3.2",
+        "x-ai/grok-4.1-fast",
+        "google/gemini-3.1-flash-lite-preview",
+        "nvidia/nemotron-3-super-120b-a12b",
+        "google/gemma-4-31b-it",
+    ]
+
+    col_cfg1, col_cfg2 = st.columns([2, 1])
+    with col_cfg1:
+        modelo_chat = st.selectbox("Modelo do agente:", modelos_chat, key="chat_modelo_main")
+    with col_cfg2:
+        if st.button("🗑️ Limpar conversa", key="btn_clear_conv_main", use_container_width=True):
+            st.session_state["chat_historico_main"] = []
+            st.session_state["chat_display_main"] = []
+            st.session_state.pop("chat_input_main", None)
+            st.session_state.pop("chat_pending_main", None)
+            st.rerun()
+
+    if not openrouter_key:
+        st.warning("Defina OPENROUTER_API_KEY no arquivo .env para usar o agente conversacional.")
+    else:
+        st.caption("A chave do OpenRouter é carregada automaticamente do .env.")
+
     st.subheader("📋 Exemplos de requisições")
     exemplos = [
-        "Qual é o preço médio dos produtos por categoria?",
-        "Liste os clientes VIP",
-        "Mostre os clientes com tag b2b",
-        "Quais clientes são novos?",
-        "Quanto o cliente C0015 gastou no total?",
-        "Calcule o total de compras do cliente C0042",
-        # Cotações simples
-        "Qual a cotação do dólar hoje?",
-        "Qual o valor do euro hoje?",
-        "Qual a cotação da libra esterlina?",
-        "Qual o preço do bitcoin hoje?",
-        "Qual o câmbio do iene japonês?",
-        # Cotações históricas
+        "Quais categorias de produto têm maior preço médio?",
+        "Liste os clientes VIP e mostre quanto cada um gastou",
+        "Gere um gráfico de barras com o preço médio por categoria",
+        "Calcule o LTV dos clientes B2B e ordene do maior para o menor",
+        "Quanto o cliente C0015 gastou? Converta o valor para euro",
+        "Compare as cotações de dólar, euro e bitcoin agora",
         "Qual era a cotação do dólar em 01/01/2025?",
-        "Qual era o euro em 15/03/2024?",
-        "Quanto valia a libra em 2024-06-10?",
-        # Multi-moeda
-        "Qual o câmbio do dólar e da libra hoje?",
-        "Compare dólar, euro e bitcoin agora",
-        # Bloqueios (demonstração pedagógica)
-        "Qual é a margem de lucro dos produtos?",   # ← bloqueio de governança
-        "Liste os clientes inadimplentes",           # ← bloqueio LGPD
+        "Tente acessar a margem de lucro dos produtos",
+        "Liste os clientes inadimplentes",
     ]
 
     col_ex1, col_ex2, col_ex3 = st.columns(3)
     colunas_ex = [col_ex1, col_ex2, col_ex3]
     for i, exemplo in enumerate(exemplos):
         with colunas_ex[i % 3]:
-            if st.button(exemplo, key=f"ex_{i}", use_container_width=True):
-                st.session_state["nl_input"] = exemplo
+            if st.button(exemplo, key=f"conv_ex_{i}", use_container_width=True):
+                st.session_state["chat_pending_main"] = exemplo
 
     st.divider()
 
-    # Campo de texto livre
+    if "chat_historico_main" not in st.session_state:
+        st.session_state["chat_historico_main"] = []
+    if "chat_display_main" not in st.session_state:
+        st.session_state["chat_display_main"] = []
+
+    for entrada in st.session_state["chat_display_main"]:
+        with st.chat_message(entrada["role"]):
+            if entrada["role"] == "user":
+                st.markdown(entrada["content"])
+            else:
+                trace = entrada.get("trace", [])
+                if trace:
+                    _render_conversation_trace(trace)
+                st.markdown(entrada["content"])
+                if trace:
+                    _render_chart_from_conversation_trace(trace)
+
     pergunta = st.text_area(
-        "Sua pergunta:",
-        value=st.session_state.get("nl_input", ""),
+        "Sua pergunta para o agente:",
+        value=st.session_state.get("chat_pending_main", ""),
         height=80,
-        placeholder="Ex.: Quanto o cliente C0020 gastou no total?",
-        key="nl_textarea",
+        placeholder="Ex.: Gere um gráfico de barras com o preço médio por categoria.",
+        key="chat_input_main",
     )
 
-    if st.button("🚀 Executar", key="btn_nl", type="primary"):
-        if not pergunta.strip():
+    executar_chat = st.button("🚀 Enviar ao agente", key="btn_conv_main", type="primary")
+    if executar_chat:
+        st.session_state["chat_pending_main"] = ""
+        if not openrouter_key:
+            st.warning("Defina OPENROUTER_API_KEY no .env antes de usar o agente conversacional.")
+        elif not pergunta.strip():
             st.warning("Digite uma pergunta antes de executar.")
         else:
-            ferramenta, argumentos, descricao = interpretar_linguagem_natural(pergunta)
-            if ferramenta is None:
-                st.error(
-                    "❓ Não foi possível identificar a intenção do pedido.\n\n"
-                    "Tente incluir palavras-chave como: *produto, categoria, preço, cliente, "
-                    "VIP, b2b, gasto, C0015, câmbio, dólar…*"
-                )
-            else:
-                with st.expander("🔍 Tradução para chamada MCP", expanded=True):
-                    st.markdown(f"**Ferramenta:** `{ferramenta}`")
-                    st.markdown(f"**Parâmetros:** `{argumentos}`")
-                    st.markdown(f"**Descrição:** {descricao}")
+            pergunta = pergunta.strip()
+            st.session_state["chat_display_main"].append({"role": "user", "content": pergunta})
+            with st.chat_message("user"):
+                st.markdown(pergunta)
 
-                resultado = executar_ferramenta(ferramenta, argumentos)
-                st.subheader("Resultado")
-                exibir_resultado(resultado)
+            with st.chat_message("assistant"):
+                with st.spinner(f"Agente `{modelo_chat}` a raciocinar…"):
+                    try:
+                        trace, resposta = agente_llm_loop(
+                            st.session_state["chat_historico_main"],
+                            pergunta,
+                            openrouter_key,
+                            modelo_chat,
+                        )
+                        _render_conversation_trace(trace)
+                        st.markdown(resposta)
+                        _render_chart_from_conversation_trace(trace)
 
-    # -------------------------------------------------------------------------
-    # CONSULTAS COMPOSTAS
-    # -------------------------------------------------------------------------
-    st.divider()
-    st.subheader("🔗 Consultas Compostas — múltiplas ferramentas encadeadas")
-    st.markdown("""
-    Estas consultas **encadeiam automaticamente várias ferramentas MCP** numa única sessão,  
-    cruzando dados de diferentes fontes para produzir análises que nenhuma ferramenta isolada consegue.  
-    Cada cartão mostra a pergunta em linguagem natural e a **cadeia de chamadas** executada.
-    """)
-
-    col_cq1, col_cq2 = st.columns(2)
-
-    # --- CQ 1: LTV dos VIPs convertido em 3 moedas ---
-    with col_cq1:
-        with st.container(border=True):
-            st.markdown("##### 💸 Qual o gasto dos clientes VIP em dólar e euro?")
-            st.caption(
-                "①  `listar_clientes_por_tag(vip)` *(NoSQL)*  →  "
-                "②  `consultar_cotacao_moedas()` *(API)*  →  "
-                "③  `calcular_total_gasto_cliente` × N *(CSV)*"
-            )
-            if st.button("Executar consulta", key="cq1", use_container_width=True):
-                log = st.empty()
-                df, erro = cq_ltv_tag_em_moedas("vip", log)
-                log.empty()
-                if erro:
-                    st.error(erro)
-                else:
-                    st.dataframe(df, use_container_width=True)
-                    total_brl = df["Total (R$)"].sum()
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Total VIP (R$)", f"R$ {total_brl:,.2f}")
-                    m2.metric("Total VIP (USD)", f"$ {df['Total (USD)'].sum():,.2f}")
-                    m3.metric("Total VIP (EUR)", f"€ {df['Total (EUR)'].sum():,.2f}")
-
-    # --- CQ 2: Ranking de LTV dos clientes B2B ---
-    with col_cq2:
-        with st.container(border=True):
-            st.markdown("##### 🏆 Qual o ranking de gasto dos clientes B2B?")
-            st.caption(
-                "①  `listar_clientes_por_tag(b2b)` *(NoSQL)*  →  "
-                "②  `calcular_total_gasto_cliente` × N *(CSV)*"
-            )
-            if st.button("Executar consulta", key="cq2", use_container_width=True):
-                log = st.empty()
-                df, erro = cq_ranking_ltv_tag("b2b", log)
-                log.empty()
-                if erro:
-                    st.error(erro)
-                else:
-                    st.dataframe(df, use_container_width=True)
-                    st.metric("Total gasto B2B (R$)", f"R$ {df['Total (R$)'].sum():,.2f}")
-
-    col_cq3, col_cq4 = st.columns(2)
-
-    # --- CQ 3: Catálogo de produtos convertido em 3 moedas ---
-    with col_cq3:
-        with st.container(border=True):
-            st.markdown("##### 🌍 Qual o preço médio dos produtos em dólar e euro?")
-            st.caption(
-                "①  `obter_metricas_produtos(categoria)` *(SQLite)*  →  "
-                "②  `consultar_cotacao_moedas()` *(API)*"
-            )
-            if st.button("Executar consulta", key="cq3", use_container_width=True):
-                log = st.empty()
-                df, erro = cq_catalogo_em_moedas(log)
-                log.empty()
-                if erro:
-                    st.error(erro)
-                else:
-                    st.dataframe(df, use_container_width=True)
-
-    # --- CQ 4: Clientes novos acima da média de gasto ---
-    with col_cq4:
-        with st.container(border=True):
-            st.markdown("##### 📈 Quais clientes novos gastam acima da média do grupo?")
-            st.caption(
-                "①  `listar_clientes_por_tag(novo)` *(NoSQL)*  →  "
-                "②  `calcular_total_gasto_cliente` × N *(CSV)*  →  análise estatística"
-            )
-            if st.button("Executar consulta", key="cq4", use_container_width=True):
-                log = st.empty()
-                df_acima, df_abaixo, erro = cq_novos_acima_da_media(log)
-                log.empty()
-                if erro:
-                    st.error(erro)
-                else:
-                    df_todos = pd.concat([df_acima, df_abaixo])
-                    media = df_todos["Total (R$)"].mean()
-                    st.metric("Média do grupo (R$)", f"R$ {media:,.2f}")
-                    st.markdown(f"**✅ Acima da média — {len(df_acima)} cliente(s):**")
-                    st.dataframe(df_acima, use_container_width=True)
-                    st.markdown(f"**📉 Abaixo da média — {len(df_abaixo)} cliente(s):**")
-                    st.dataframe(df_abaixo, use_container_width=True)
+                        st.session_state["chat_historico_main"].append(
+                            {"role": "user", "content": pergunta}
+                        )
+                        st.session_state["chat_historico_main"].append(
+                            {"role": "assistant", "content": resposta}
+                        )
+                        st.session_state["chat_display_main"].append(
+                            {"role": "assistant", "content": resposta, "trace": trace}
+                        )
+                    except Exception as e:
+                        st.error(f"Erro no Agente LLM: {e}")
 
 st.divider()
 st.caption("Minicurso: Arquiteturas de Dados e IA Generativa com Model Context Protocol (MCP).")

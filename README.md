@@ -5,6 +5,8 @@
 **Autor:** Prof. Dr. Marlon Marcon  
 **Instituição:** Universidade Tecnológica Federal do Paraná — UTFPR
 
+Apresentação do minicurso: [Minicurso ERBD 2026 - Agentes e MCP.pdf](Minicurso%20ERBD%202026%20-%20Agentes%20e%20MCP.pdf)
+
 ---
 
 ## Sobre o Projeto
@@ -41,8 +43,6 @@ ERBD2026_MinicursoMCP/
 │   ├── produtos.db                # Banco relacional SQLite (1.000 produtos)
 │   ├── clientes.json              # Banco documental NoSQL (1.000 clientes)
 │   └── vendas.csv                 # Histórico de Big Data de vendas (20.000 registros)
-└── pages/
-    └── agente_conversacional.py   # Página do agente conversacional (Streamlit)
 ```
 
 ---
@@ -120,14 +120,7 @@ python mcp/client.py
 streamlit run app.py
 ```
 
-Acesse `http://localhost:8501` no navegador. A aplicação possui duas páginas:
-
-| Página | Descrição |
-|--------|-----------|
-| **Agente de Dados** (`app.py`) | Consultas diretas às ferramentas MCP com exemplos guiados |
-| **Agente Conversacional** (`pages/agente_conversacional.py`) | Chat livre com LLM + ferramentas MCP (lê a API Key do `.env`) |
-
-> Na página **Agente Conversacional**, a chave do OpenRouter é carregada automaticamente do `.env`; na barra lateral você apenas escolhe o modelo na lista.
+Acesse `http://localhost:8501` no navegador. A aplicação concentra os fluxos no arquivo `app.py`, incluindo a aba **Agente Conversacional**, que usa a chave do OpenRouter carregada automaticamente do `.env`.
 
 ---
 
