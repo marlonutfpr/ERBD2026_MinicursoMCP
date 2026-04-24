@@ -1,0 +1,17 @@
+# Dependências do Minicurso MCP — ERBD 2026
+# Instale com: pip install -r requirements.txt
+
+# Protocolo MCP (servidor FastMCP + cliente stdio)
+mcp>=1.27.0
+
+# Interface web interativa
+streamlit>=1.29.0
+
+# Cliente OpenAI compatível com OpenRouter (loop agêntico LLM)
+openai>=2.32.0
+
+# Requisições HTTP (cotação de moedas via API externa)
+requests>=2.32.3
+
+# Carregamento de variáveis de ambiente a partir do arquivo .env
+python-dotenv>=1.0.0
