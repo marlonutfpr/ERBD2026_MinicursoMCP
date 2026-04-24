@@ -7,6 +7,9 @@ mcp>=1.27.0
 # Interface web interativa
 streamlit>=1.29.0
 
+# Tabelas usadas pelo cliente e pelo servidor MCP
+pandas>=2.2.0
+
 # Cliente OpenAI compatível com OpenRouter (loop agêntico LLM)
 openai>=2.32.0
 

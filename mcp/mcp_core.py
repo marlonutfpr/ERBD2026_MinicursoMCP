@@ -57,7 +57,10 @@ _SYSTEM_PROMPT = (
     "Use as ferramentas disponíveis para responder ao usuário em português. "
     "Quando os dados vierem de múltiplas ferramentas, combine-os numa resposta "
     "clara, estruturada e objetiva. Mantenha o contexto da conversa anterior. "
-    "Nunca invente dados — use sempre as ferramentas para obtê-los."
+    "Nunca invente dados — use sempre as ferramentas para obtê-los. "
+    "Quando o usuário pedir gráfico, visualização, plot, barras, linhas, evolução ou comparação visual, "
+    "obtenha primeiro os dados tabulares necessários e depois chame a ferramenta gerar_grafico_dataframe. "
+    "Ao usar essa ferramenta, envie dataframe_json no formato records com colunas adequadas para x_coluna e y_coluna."
 )
 
 

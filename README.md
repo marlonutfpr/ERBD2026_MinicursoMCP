@@ -139,6 +139,7 @@ Acesse `http://localhost:8501` no navegador. A aplicação possui duas páginas:
 | `listar_clientes_por_tag` | JSON (NoSQL) | Clientes por tag de perfil (com filtro LGPD) |
 | `calcular_total_gasto_cliente` | CSV (Big Data) | Total gasto por cliente nas vendas |
 | `consultar_cotacao_moedas` | API externa | Cotação de moedas em relação ao BRL (atual ou histórica) |
+| `gerar_grafico_dataframe` | DataFrame serializado | Gera um gráfico PNG em base64 para exibição no Streamlit |
 
 ---
 

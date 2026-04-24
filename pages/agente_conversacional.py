@@ -59,6 +59,47 @@ with st.sidebar:
 # -----------------------------------------------------------------------------
 # HELPER — renderiza o raciocínio do agente (trace)
 # -----------------------------------------------------------------------------
+def _render_tool_payload(conteudo: str):
+    try:
+        dados = json.loads(conteudo)
+    except Exception:
+        st.code(conteudo, language=None)
+        return
+
+    if isinstance(dados, dict) and dados.get("tipo") == "grafico" and dados.get("dados"):
+        import pandas as pd
+
+        df = pd.DataFrame(dados["dados"])
+        x_coluna = dados.get("x_coluna")
+        y_coluna = dados.get("y_coluna")
+        tipo_grafico = dados.get("grafico", "bar")
+
+        if x_coluna not in df.columns or y_coluna not in df.columns:
+            st.error("Payload de gráfico inválido retornado pelo servidor MCP.")
+            st.json(dados)
+            return
+
+        st.markdown(f"**{dados.get('titulo', 'Gráfico gerado pelo servidor MCP')}**")
+        df_plot = df.set_index(x_coluna)[[y_coluna]]
+        if tipo_grafico == "line":
+            st.line_chart(df_plot, use_container_width=True)
+        else:
+            st.bar_chart(df_plot, use_container_width=True)
+        return
+
+    if isinstance(dados, dict) and "dados" in dados and "colunas" in dados:
+        import pandas as pd
+        st.dataframe(pd.DataFrame(dados["dados"], columns=dados["colunas"]), use_container_width=True)
+        return
+
+    if isinstance(dados, list):
+        import pandas as pd
+        st.dataframe(pd.DataFrame(dados), use_container_width=True)
+        return
+
+    st.json(dados)
+
+
 def _render_trace(trace: list):
     for step in trace:
         if step["tipo"] == "ferramentas_descobertas":
@@ -74,10 +115,20 @@ def _render_trace(trace: list):
 
         elif step["tipo"] == "resultado":
             st.markdown(f"**📥 Resposta de `{step['ferramenta']}`:**")
-            try:
-                st.json(json.loads(step["conteudo"]))
-            except Exception:
-                st.code(step["conteudo"], language=None)
+            _render_tool_payload(step["conteudo"])
+
+
+def _render_chart_from_trace(trace: list):
+    for step in reversed(trace):
+        if step.get("tipo") != "resultado":
+            continue
+        try:
+            dados = json.loads(step["conteudo"])
+        except Exception:
+            continue
+        if isinstance(dados, dict) and dados.get("tipo") == "grafico" and dados.get("dados"):
+            _render_tool_payload(step["conteudo"])
+            break
 
 
 # -----------------------------------------------------------------------------
@@ -137,6 +188,8 @@ for entrada in st.session_state["chat_display"]:
                 with st.expander("🔍 Raciocínio do Agente", expanded=False):
                     _render_trace(trace)
             st.markdown(entrada["content"])
+            if trace:
+                _render_chart_from_trace(trace)
 
 # -----------------------------------------------------------------------------
 # INPUT — chat_input nativo (funciona porque estamos no nível raiz da página)
@@ -167,6 +220,7 @@ if pergunta:
                     _render_trace(trace)
 
                 st.markdown(resposta)
+                _render_chart_from_trace(trace)
 
                 # Atualiza histórico para o próximo turno (apenas user/assistant)
                 st.session_state["chat_historico"].append(

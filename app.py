@@ -322,6 +322,24 @@ def exibir_resultado(resultado_texto: str):
         
     try:
         dados = json.loads(resultado_texto)
+        if isinstance(dados, dict) and dados.get("tipo") == "grafico" and dados.get("dados"):
+            df = pd.DataFrame(dados["dados"])
+            x_coluna = dados.get("x_coluna")
+            y_coluna = dados.get("y_coluna")
+            tipo_grafico = dados.get("grafico", "bar")
+
+            if x_coluna not in df.columns or y_coluna not in df.columns:
+                st.error("Resposta de gráfico inválida: colunas esperadas não foram retornadas pelo servidor MCP.")
+                return
+
+            st.markdown(f"**{dados.get('titulo', 'Gráfico gerado pelo servidor MCP')}**")
+            df_plot = df.set_index(x_coluna)[[y_coluna]]
+            if tipo_grafico == "line":
+                st.line_chart(df_plot, use_container_width=True)
+            else:
+                st.bar_chart(df_plot, use_container_width=True)
+            st.dataframe(df, use_container_width=True)
+            return
         # Se for uma lista ou um dicionário que contém "dados" (como o nosso SQLite)
         if isinstance(dados, dict) and "dados" in dados and "colunas" in dados:
             df = pd.DataFrame(dados["dados"], columns=dados["colunas"])
@@ -355,6 +373,7 @@ aba1, aba2, aba3, aba4, aba5 = st.tabs([
 with aba1:
     st.header("Análise de Produtos (SQLite)")
     st.write("O servidor expõe agregações. Tente aceder a dimensões de negócio.")
+    st.caption("Também é possível pedir ao servidor MCP que transforme uma tabela em gráfico para o Streamlit renderizar.")
     
     col1, col2 = st.columns([1, 2])
     with col1:
@@ -367,6 +386,28 @@ with aba1:
             resultado = executar_ferramenta("obter_metricas_produtos", {"dimensao": dimensao_sql})
             with col2:
                 exibir_resultado(resultado)
+        if st.button("Gerar gráfico das métricas", key="btn_sql_chart"):
+            resultado = executar_ferramenta("obter_metricas_produtos", {"dimensao": dimensao_sql})
+            with col2:
+                if "❌" in resultado or "⚠️" in resultado:
+                    exibir_resultado(resultado)
+                else:
+                    try:
+                        dados = json.loads(resultado)
+                        df = pd.DataFrame(dados["dados"], columns=dados["colunas"])
+                        payload = executar_ferramenta(
+                            "gerar_grafico_dataframe",
+                            {
+                                "dataframe_json": df.to_json(orient="records", force_ascii=False),
+                                "x_coluna": dados["colunas"][0],
+                                "y_coluna": dados["colunas"][1],
+                                "tipo": "bar",
+                                "titulo": f"Preço médio por {dados['colunas'][0]}",
+                            },
+                        )
+                        exibir_resultado(payload)
+                    except Exception as e:
+                        st.error(f"Erro ao preparar gráfico no cliente: {e}")
 
 # --- ABA 2: NOSQL JSON ---
 with aba2:

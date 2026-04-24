@@ -5,6 +5,7 @@ import csv
 import json
 import requests
 from typing import List, Dict, Any
+import pandas as pd
 
 mcp = FastMCP("DataIntegrationServer_Seguro")
 
@@ -156,6 +157,59 @@ def consultar_cotacao_moedas(moeda: str = "USD,EUR", data: str = "") -> str:
         return json.dumps(resultado, ensure_ascii=False)
     except Exception as e:
         return f"Falha na API financeira: {str(e)}"
+
+
+@mcp.tool()
+def gerar_grafico_dataframe(
+    dataframe_json: str,
+    x_coluna: str,
+    y_coluna: str,
+    tipo: str = "bar",
+    titulo: str = "Gráfico gerado pelo MCP",
+) -> str:
+    """
+    Recebe um DataFrame serializado em JSON e devolve uma especificação de gráfico
+    com os dados necessários para o cliente Streamlit renderizar nativamente.
+
+    Parâmetros:
+    - dataframe_json: JSON serializado no formato 'records'.
+    - x_coluna: nome da coluna para o eixo X.
+    - y_coluna: nome da coluna numérica para o eixo Y.
+    - tipo: 'bar' ou 'line'.
+    - titulo: título do gráfico.
+    """
+    tipos_suportados = {"bar", "line"}
+    if tipo not in tipos_suportados:
+        return f"⚠️ Tipo de gráfico não suportado: {tipo}. Use um de: {', '.join(sorted(tipos_suportados))}"
+
+    try:
+        registros = json.loads(dataframe_json)
+        df = pd.DataFrame(registros)
+    except Exception as e:
+        return f"⚠️ Erro ao desserializar o DataFrame: {str(e)}"
+
+    if df.empty:
+        return "⚠️ O DataFrame recebido está vazio."
+
+    colunas_faltantes = [col for col in [x_coluna, y_coluna] if col not in df.columns]
+    if colunas_faltantes:
+        return f"⚠️ Coluna(s) não encontrada(s) no DataFrame: {', '.join(colunas_faltantes)}"
+
+    try:
+        df[y_coluna] = pd.to_numeric(df[y_coluna], errors="raise")
+        return json.dumps(
+            {
+                "tipo": "grafico",
+                "titulo": titulo,
+                "x_coluna": x_coluna,
+                "y_coluna": y_coluna,
+                "grafico": tipo,
+                "dados": df[[x_coluna, y_coluna]].to_dict(orient="records"),
+            },
+            ensure_ascii=False,
+        )
+    except Exception as e:
+        return f"Erro ao gerar gráfico: {str(e)}"
 
 if __name__ == "__main__":
     print("A iniciar o Servidor MCP de Dados Heterogéneos (Modo Seguro)...")
