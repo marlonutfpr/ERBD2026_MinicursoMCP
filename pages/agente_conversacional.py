@@ -31,32 +31,23 @@ st.set_page_config(
 with st.sidebar:
     st.header("⚙️ Configuração do Agente")
     _env_key = os.getenv("OPENROUTER_API_KEY", "")
-    openrouter_key = st.text_input(
-        "OpenRouter API Key",
-        value=_env_key,
-        type="password",
-        placeholder="sk-or-v1-...",
-        help="Defina OPENROUTER_API_KEY no arquivo .env ou insira manualmente. Obtenha sua chave em openrouter.ai/keys",
-    )
+    openrouter_key = _env_key.strip()
     _MODELOS = [
         "openai/gpt-4o-mini",
         "deepseek/deepseek-v3.2",
         "x-ai/grok-4.1-fast",
         "google/gemini-3.1-flash-lite-preview",
-        "nvidia/nemotron-3-super-120b-a12b:free",
-        "openai/gpt-oss-120b:free",
-        "google/gemma-4-31b-it:free",
+        "nvidia/nemotron-3-super-120b-a12b",
+        "google/gemma-4-31b-it",
     ]
-    modelo_sel = st.selectbox("Modelo", _MODELOS)
-    modelo_custom = st.text_input(
-        "Ou insira manualmente:",
-        placeholder="deixe vazio para usar o selecionado acima",
-    )
-    modelo = modelo_custom.strip() if modelo_custom.strip() else modelo_sel
+    modelo = st.selectbox("Modelo", _MODELOS)
     st.caption("[Ver todos os modelos disponíveis](https://openrouter.ai/models)")
 
     if openrouter_key:
         st.success(f"Modelo ativo: `{modelo}`")
+        st.caption("OPENROUTER_API_KEY carregada automaticamente do arquivo .env.")
+    else:
+        st.warning("OPENROUTER_API_KEY não encontrada no arquivo .env.")
 
     st.divider()
     if st.button("🗑️ Limpar conversa", use_container_width=True):
@@ -100,7 +91,7 @@ Nenhuma lógica de roteamento foi codificada na aplicação.
 """)
 
 if not openrouter_key:
-    st.info("🔑 Insira sua **OpenRouter API Key** na barra lateral para começar.")
+    st.info("🔑 Defina **OPENROUTER_API_KEY** no arquivo `.env` para começar.")
     st.stop()
 
 # -----------------------------------------------------------------------------

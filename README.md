@@ -92,8 +92,6 @@ OPENROUTER_API_KEY=sk-or-v1-SUA_CHAVE_AQUI
 
 > O arquivo `.env` está no `.gitignore` e **nunca deve ser versionado**. Use `.env.example` como referência pública.
 
-Alternativamente, a chave pode ser inserida diretamente na barra lateral da interface web — o campo é pré-preenchido com o valor do `.env` caso ele exista.
-
 ---
 
 ## Configuração dos Dados
@@ -127,9 +125,9 @@ Acesse `http://localhost:8501` no navegador. A aplicação possui duas páginas:
 | Página | Descrição |
 |--------|-----------|
 | **Agente de Dados** (`app.py`) | Consultas diretas às ferramentas MCP com exemplos guiados |
-| **Agente Conversacional** (`pages/agente_conversacional.py`) | Chat livre com LLM + ferramentas MCP (requer API Key) |
+| **Agente Conversacional** (`pages/agente_conversacional.py`) | Chat livre com LLM + ferramentas MCP (lê a API Key do `.env`) |
 
-> Na página **Agente Conversacional**, insira sua chave do OpenRouter na barra lateral e escolha o modelo desejado.
+> Na página **Agente Conversacional**, a chave do OpenRouter é carregada automaticamente do `.env`; na barra lateral você apenas escolhe o modelo na lista.
 
 ---
 
